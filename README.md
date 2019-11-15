@@ -1,6 +1,6 @@
 ## Amazing Co Employee Structure
 #### Problem Statement - 
-Model Amazing Co's employee directory structure in a way that it can be 
+Model Amazing Co's employee structure in a way that it can be 
 1. Persistent
 2. List of descendants can be fetched easily 
 3. Employee structure can be reorganized 
@@ -16,7 +16,7 @@ Postgres was chosen as the backend to store all  the information. The solution r
 ```
 Employee Table - Id, Name, Parent, Root, Height
 
-Relationship Table - Id, Ancestor, Descendant
+Relationship Table - Ancestor, Descendant
 ```
 
 Employee table mimics the Node mentioned in the problem statement. Id is the unique identifier for an employee as there might be employees  with the exact same name. 
@@ -34,7 +34,7 @@ Updates the employee structure. This is achieved in three steps -
 * Update the corresponding relationship in relationships table
 * Update the height of all the descendant employees
 
-The API endpoints can be accessed using curl commands or by visiting the swagger page at <localhost:8000/api/v1/>
+The API endpoints can be accessed using curl commands or by visiting the swagger page at `localhost:8000/api/v1/`
 
 #### How to run
 The app can be instantiated using the command - 

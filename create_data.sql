@@ -1,6 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-CREATE TABLE public.employee (
+CREATE TABLE if not exists public.employee (
     id uuid DEFAULT uuid_generate_v4(),
     name character varying(256) NOT NULL,
     parent character varying(256),
@@ -9,7 +9,7 @@ CREATE TABLE public.employee (
 );
 
 
-CREATE TABLE public.relationship (
+CREATE TABLE if not exists public.relationship (
     ancestor uuid,
     descendant uuid
 );

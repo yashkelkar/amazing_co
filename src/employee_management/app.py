@@ -28,7 +28,6 @@ def initialize_app(flask_app):
     flask_app.register_blueprint(blueprint)
 
 
-
 initialize_app(app)
 
 if __name__ == '__main__':
