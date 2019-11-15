@@ -1,0 +1,9 @@
+Flask-Cors==3.0.7
+flask-restplus==0.12.1
+Flask-SQLAlchemy==2.3.2
+Flask==1.0.2
+gunicorn==19.9.0
+psycopg2-binary==2.7.7
+PyYaml==5.1
+requests==2.21.0
+structlog==19.1.0
