@@ -34,8 +34,8 @@ insert into employee (name, parent, root, height) values ('P05111','P0511', 'P0'
 insert into employee (name, parent, root, height) values ('P051111','P05111', 'P0', 5);
 insert into employee (name, parent, root, height) values ('P0511111', 'P051111', 'P0', 6);
 
-insert into employee (name, parent, root, height) values ('P01', 'P051', 'P0', 1);
-insert into employee (name, parent, root, height) values ('P777', 'P01', 'P0', 1);
+insert into employee (name, parent, root, height) values ('P01', 'P051', 'P0', 3);
+insert into employee (name, parent, root, height) values ('P777', 'P01', 'P0', 4);
 
 
 insert into relationship (ancestor, descendant) values ((select id from employee where name = 'P0'), (select id from employee where name = 'P01' and parent='P0'));

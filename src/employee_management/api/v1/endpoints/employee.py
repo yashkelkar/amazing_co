@@ -4,7 +4,7 @@ import contextlib
 from psycopg2.extras import RealDictCursor
 from flask_restplus import Resource
 from employee_management.api.restplus import api
-from employee_management.api.v1.model.utils import db_connection, update_descendant_height
+from employee_management.api.v1.model.utils import db_connection, update_descendant_height, root_update, normal_update
 
 log = structlog.getLogger(__name__)
 
@@ -32,8 +32,8 @@ class EmployeeGetByName(Resource):
         with use_psql_connection() as cur:
             # check if employee name is unique or not
             query = "select id from employee where name='{0}'".format(name)
+            log.info("Executing query: " + query)
             cur.execute(query)
-            log.info("Executed query: " + query)
             results = cur.fetchall()
             if len(results) == 0:
                 return {"Error": "No such employee exists"}, 404
@@ -43,8 +43,8 @@ class EmployeeGetByName(Resource):
             for single in results:
                 query = "select * from employee where id in (select descendant from relationship where ancestor='{0}')" \
                     .format(single['id'])
+                log.info("Executing query: " + query)
                 cur.execute(query)
-                log.info("Executed query: " + query)
                 new_results = cur.fetchall()
                 descendants.append(new_results)
         return descendants, 201
@@ -63,8 +63,8 @@ class EmployeeGetAllByName(Resource):
         with use_psql_connection() as cur:
             # check if employee name is exists or not
             query = "select id from employee where name='{0}'".format(name)
+            log.info("Executing query: " + query)
             cur.execute(query)
-            log.info("Executed query: " + query)
             results = cur.fetchall()
 
             if len(results) == 0:
@@ -77,8 +77,8 @@ class EmployeeGetAllByName(Resource):
             while not q.empty():
                 query = "select * from employee where id in (select descendant from relationship where ancestor='{0}')" \
                     .format(q.get())
+                log.info("Executing query: " + query)
                 cur.execute(query)
-                log.info("Executed query: " + query)
                 new_results = cur.fetchall()
                 if len(new_results) > 0:
                     descendants.append(new_results)
@@ -100,12 +100,12 @@ class EmployeeUpdateParent(Resource):
         with use_psql_connection() as cur:
             # check if employee and new parent exist
             query = "select id from employee where name='{0}'".format(name)
+            log.info("Executing query: " + query)
             cur.execute(query)
-            log.info("Executed query: " + query)
             employee_id = cur.fetchall()
             query = "select id from employee where name='{0}'".format(new_parent)
+            log.info("Executing query: " + query)
             cur.execute(query)
-            log.info("Executed query: " + query)
             new_parent_id = cur.fetchall()
 
             if len(employee_id) == 0 or len(new_parent_id) == 0:
@@ -115,22 +115,23 @@ class EmployeeUpdateParent(Resource):
             if len(employee_id) > 1 or len(new_parent_id) > 1:
                 return {"Error": "More than one employee or new parent with the same name found"}, 409
 
-            # Update the relationship table
-            query = "update relationship set ancestor='{0}' where descendant='{1}'".format(new_parent_id[0]['id'],
-                                                                                           employee_id[0]['id'])
-            cur.execute(query)
-            log.info("Executed query: " + query)
+            employee_id = employee_id[0]['id']
+            new_parent_id = new_parent_id[0]['id']
 
-            # Update employee table
-            query = "select height from employee where name='{0}'".format(new_parent)
+            # Check if employee is root
+            print(str(employee_id))
+            query = "select * from relationship where descendant='{0}'".format(employee_id)
+            log.info("Executing query: " + query)
             cur.execute(query)
-            log.info("Executed query: " + query)
-            new_parent_height = cur.fetchall()[0]['height']
-            query = "update employee set height={0}, parent='{1}' where name='{2}'".format(new_parent_height+1,
-                                                                                           new_parent, name)
-            cur.execute(query)
-            log.info("Executed query: " + query)
-            update_descendant_height(parent_id=employee_id[0]['id'], height=new_parent_height+1, cur=cur)
+            employee_parent = cur.fetchall()
+            if len(employee_parent) == 0:
+                root_update(employee=name, employee_id=employee_id, new_parent=new_parent,
+                            new_parent_id=new_parent_id, cur=cur)
+            else:
+                log.info(employee_id)
+                normal_update(employee=name, employee_id=employee_id, new_parent=new_parent,
+                              new_parent_id=new_parent_id, cur=cur)
+
         return 204
 
 
