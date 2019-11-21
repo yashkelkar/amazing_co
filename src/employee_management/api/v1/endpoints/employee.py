@@ -1,6 +1,7 @@
 import structlog
 from queue import Queue
 import contextlib
+import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask_restplus import Resource
 from employee_management.api.restplus import api
@@ -25,28 +26,41 @@ class EmployeeGetByName(Resource):
     @api.doc(params={'name': 'Employee name'})
     @api.response('Direct descendants of given employee(s)', 201)
     @api.response('No such employee exists', 404)
+    @api.response('KeyError Exception: Make sure the given employee name is correct', 400)
+    @api.response('Unable to connect to the database', 503)
+    @api.response('Unhandled exception', 500)
     def get(self, name):
         """
         Returns the direct descendants of the given employee(s)
         """
-        with use_psql_connection() as cur:
-            # check if employee name is unique or not
-            query = "select id from employee where name='{0}'".format(name)
-            log.info("Executing query: " + query)
-            cur.execute(query)
-            results = cur.fetchall()
-            if len(results) == 0:
-                return {"Error": "No such employee exists"}, 404
-
-            # Possible to have more than one employee with same name
-            descendants = []
-            for single in results:
-                query = "select * from employee where id in (select descendant from relationship where ancestor='{0}')" \
-                    .format(single['id'])
+        descendants = []
+        try:
+            with use_psql_connection() as cur:
+                # check if employee name is unique or not
+                query = "select id from employee where name='{0}'".format(name)
                 log.info("Executing query: " + query)
                 cur.execute(query)
-                new_results = cur.fetchall()
-                descendants.append(new_results)
+                results = cur.fetchall()
+                if len(results) == 0:
+                    return {"Error": "No such employee exists"}, 404
+
+                # Possible to have more than one employee with same name
+                for single in results:
+                    query = "select * from employee where id in (select descendant from relationship where ancestor='{0}')" \
+                        .format(single['id'])
+                    log.info("Executing query: " + query)
+                    cur.execute(query)
+                    new_results = cur.fetchall()
+                    descendants.append(new_results)
+        except KeyError as ke:
+            log.info("KeyError" + str(ke))
+            return {"Error": "KeyError Exception: Make sure the given employee name is correct"}, 400
+        except psycopg2.OperationalError as e:
+            log.error("Unable to connect to the database")
+            return {"Error": "Unable to connect to the database"}, 503
+        except Exception as e:
+            log.error("Unhandled exception: " + str(e))
+            return {"Error": "Unhandled exception"}, 500
         return descendants, 201
 
 
@@ -55,34 +69,46 @@ class EmployeeGetAllByName(Resource):
     @api.doc(params={'name': 'Employee name'})
     @api.response('All descendants of given employee(s)', 201)
     @api.response('No such employee exists', 404)
+    @api.response('KeyError Exception: Make sure the given employee name is correct', 400)
+    @api.response('Unable to connect to the database', 503)
+    @api.response('Unhandled exception', 500)
     def get(self, name):
         """
         Returns all the employees under the given employee(s)
         """
-
-        with use_psql_connection() as cur:
-            # check if employee name is exists or not
-            query = "select id from employee where name='{0}'".format(name)
-            log.info("Executing query: " + query)
-            cur.execute(query)
-            results = cur.fetchall()
-
-            if len(results) == 0:
-                return {"Error": "No such employee exists"}, 404
-            descendants = []
-
-            # BFS approach to traverse all descendants
-            q = Queue()
-            [q.put(i['id']) for i in results]
-            while not q.empty():
-                query = "select * from employee where id in (select descendant from relationship where ancestor='{0}')" \
-                    .format(q.get())
+        descendants = []
+        try:
+            with use_psql_connection() as cur:
+                # check if employee name is exists or not
+                query = "select id from employee where name='{0}'".format(name)
                 log.info("Executing query: " + query)
                 cur.execute(query)
-                new_results = cur.fetchall()
-                if len(new_results) > 0:
-                    descendants.append(new_results)
-                [q.put(i['id']) for i in new_results]
+                results = cur.fetchall()
+
+                if len(results) == 0:
+                    return {"Error": "No such employee exists"}, 404
+
+                # BFS approach to traverse all descendants
+                q = Queue()
+                [q.put(i['id']) for i in results]
+                while not q.empty():
+                    query = "select * from employee where id in (select descendant from relationship where ancestor='{0}')" \
+                        .format(q.get())
+                    log.info("Executing query: " + query)
+                    cur.execute(query)
+                    new_results = cur.fetchall()
+                    if len(new_results) > 0:
+                        descendants.append(new_results)
+                    [q.put(i['id']) for i in new_results]
+        except KeyError as ke:
+            log.info("KeyError" + str(ke))
+            return {"Error": "KeyError Exception: Make sure the given employee name is correct"}, 400
+        except psycopg2.OperationalError as e:
+            log.error("Unable to connect to the database")
+            return {"Error": "Unable to connect to the database"}, 503
+        except Exception as e:
+            log.error("Unhandled exception: " + str(e))
+            return {"Error": "Unhandled exception"}, 500
         return descendants, 201
 
 
@@ -93,45 +119,61 @@ class EmployeeUpdateParent(Resource):
     @api.response('Employee relationship updated', 204)
     @api.response('Either employee or new parent not found', 404)
     @api.response('More than one employee or new parent with the same name found', 409)
+    @api.response('KeyError Exception: Make sure the given employee name is correct', 400)
+    @api.response('IndexError Exception: Make sure the given employee/new parent name is correct', 400)
+    @api.response('Unable to connect to the database', 503)
+    @api.response('Unhandled exception', 500)
     def put(self, name, new_parent):
         """
         Updates the employee structure by moving employee and descendants under the new parent
         """
-        with use_psql_connection() as cur:
-            # check if employee and new parent exist
-            query = "select id from employee where name='{0}'".format(name)
-            log.info("Executing query: " + query)
-            cur.execute(query)
-            employee_id = cur.fetchall()
-            query = "select id from employee where name='{0}'".format(new_parent)
-            log.info("Executing query: " + query)
-            cur.execute(query)
-            new_parent_id = cur.fetchall()
+        try:
+            with use_psql_connection() as cur:
+                # check if employee and new parent exist
+                query = "select id from employee where name='{0}'".format(name)
+                log.info("Executing query: " + query)
+                cur.execute(query)
+                employee_id = cur.fetchall()
+                query = "select id from employee where name='{0}'".format(new_parent)
+                log.info("Executing query: " + query)
+                cur.execute(query)
+                new_parent_id = cur.fetchall()
 
-            if len(employee_id) == 0 or len(new_parent_id) == 0:
-                return {"Error": "Either employee or new parent not found"}, 404
+                if len(employee_id) == 0 or len(new_parent_id) == 0:
+                    return {"Error": "Either employee or new parent not found"}, 404
 
-            # Possible to have employees with same name. Ideally we should have an API call that can address this
-            if len(employee_id) > 1 or len(new_parent_id) > 1:
-                return {"Error": "More than one employee or new parent with the same name found"}, 409
+                # Possible to have employees with same name. Ideally we should have an API call that can address this
+                if len(employee_id) > 1 or len(new_parent_id) > 1:
+                    return {"Error": "More than one employee or new parent with the same name found"}, 409
 
-            employee_id = employee_id[0]['id']
-            new_parent_id = new_parent_id[0]['id']
+                employee_id = employee_id[0]['id']
+                new_parent_id = new_parent_id[0]['id']
 
-            # Check if employee is root
-            print(str(employee_id))
-            query = "select * from relationship where descendant='{0}'".format(employee_id)
-            log.info("Executing query: " + query)
-            cur.execute(query)
-            employee_parent = cur.fetchall()
-            if len(employee_parent) == 0:
-                root_update(employee=name, employee_id=employee_id, new_parent=new_parent,
-                            new_parent_id=new_parent_id, cur=cur)
-            else:
-                log.info(employee_id)
-                normal_update(employee=name, employee_id=employee_id, new_parent=new_parent,
-                              new_parent_id=new_parent_id, cur=cur)
-
+                # Check if employee is root
+                print(str(employee_id))
+                query = "select * from relationship where descendant='{0}'".format(employee_id)
+                log.info("Executing query: " + query)
+                cur.execute(query)
+                employee_parent = cur.fetchall()
+                if len(employee_parent) == 0:
+                    root_update(employee=name, employee_id=employee_id, new_parent=new_parent,
+                                new_parent_id=new_parent_id, cur=cur)
+                else:
+                    log.info(employee_id)
+                    normal_update(employee=name, employee_id=employee_id, new_parent=new_parent,
+                                  new_parent_id=new_parent_id, cur=cur)
+        except KeyError as ke:
+            log.error("KeyError" + str(ke))
+            return {"Error": "KeyError Exception: Make sure the given employee name is correct"}, 400
+        except psycopg2.OperationalError as e:
+            log.error("Unable to connect to the database")
+            return {"Error": "Unable to connect to the database"}, 503
+        except IndexError as ie:
+            log.error("IndexError" + str(ie))
+            return {"Error": "IndexError Exception: Make sure the given employee/new parent name is correct"}, 400
+        except Exception as e:
+            log.error("Unhandled exception: " + str(e))
+            return {"Error": "Unhandled exception"}, 500
         return 204
 
 
